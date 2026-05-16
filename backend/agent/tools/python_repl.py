@@ -2,6 +2,7 @@ import ast
 import sys
 import textwrap
 from io import StringIO
+from typing import Optional
 
 from .base import BaseTool, ToolResult
 
@@ -32,7 +33,7 @@ _SAFE_BUILTINS = {
 }
 
 
-def _validate_demo_code(code: str) -> str | None:
+def _validate_demo_code(code: str) -> Optional[str]:
     """Demo guard only: blocks common risky operations, not a production sandbox."""
     try:
         tree = ast.parse(code)

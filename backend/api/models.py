@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -11,8 +11,16 @@ class ChatRequest(BaseModel):
 
 class MemoryStoreRequest(BaseModel):
     content: str
-    tags: list[str] = []
-    metadata: dict[str, str] = Field(default_factory=dict)
+    tags: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    user_id: str = Field(default="demo-user")
+    session_id: str = Field(default="default")
+
+
+class MemoryUpdateRequest(BaseModel):
+    content: str | None = None
+    tags: list[str] | None = None
+    metadata: dict[str, Any] | None = None
 
 
 class AutomationRequest(BaseModel):

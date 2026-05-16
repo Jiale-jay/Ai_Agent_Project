@@ -26,6 +26,8 @@ class FakeMemory:
 
 
 async def fake_stream_text_response(self, messages, system_prompt, save_to_session=None):
+    self.last_stream_messages = messages
+    self.last_system_prompt = system_prompt
     yield "grounded answer"
     if save_to_session:
         session_id, history = save_to_session
@@ -64,13 +66,19 @@ async def test_rag_mode_requires_knowledge_when_search_empty():
 
 @pytest.mark.asyncio
 async def test_rag_mode_uses_retrieved_knowledge():
-    memory = FakeMemory(search_results=["Expense claims over EUR 1,000 require review."])
+    memory = FakeMemory(search_results=[{
+        "content": "Expense claims over EUR 1,000 require review.",
+        "metadata": {"filename": "expense-policy.md", "chunk_index": 2},
+        "score": 0.88,
+    }])
     agent = make_agent(memory)
 
     chunks = [chunk async for chunk in agent.run("What is the expense policy?", "s1", mode="rag")]
 
     assert chunks == ["grounded answer"]
     assert memory.saved["s1"][-1]["content"] == "grounded answer"
+    assert "expense-policy.md" in agent.last_stream_messages[0]["content"]
+    assert "chunk=2" in agent.last_stream_messages[0]["content"]
 
 
 @pytest.mark.asyncio

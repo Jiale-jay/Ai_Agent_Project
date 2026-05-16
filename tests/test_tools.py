@@ -56,7 +56,10 @@ class FakeMemory:
         self.stored.append((content, tags))
 
     async def search(self, query, limit=5):
-        return ["Expense claims over EUR 1,000 require manager approval."]
+        return [{
+            "content": "Expense claims over EUR 1,000 require manager approval.",
+            "metadata": {"filename": "expense-policy.md", "chunk_index": 1},
+        }]
 
 
 @pytest.mark.asyncio
@@ -70,3 +73,4 @@ async def test_memory_tools_store_and_recall():
     assert memory.stored == [("Remember approval policy", ["policy"])]
     assert recalled.success is True
     assert "manager approval" in recalled.output
+    assert "expense-policy.md" in recalled.output

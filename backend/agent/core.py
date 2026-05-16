@@ -18,7 +18,7 @@ DIRECT_SYSTEM_PROMPT = """You are an enterprise GenAI assistant.
 Answer directly and concisely. Do not claim to have checked internal documents or tools."""
 
 RAG_SYSTEM_PROMPT = """You are an enterprise RAG assistant.
-Use only the supplied knowledge snippets as grounding context. If the snippets do not answer the question, say what is missing and suggest a safe next step. Cite snippets as [1], [2], etc."""
+Use only the supplied knowledge snippets as grounding context. If the snippets do not answer the question, say what is missing and suggest a safe next step. Cite snippets as [1], [2], etc. When a source filename is available, mention it briefly with the citation."""
 
 _SUMMARY_PROMPT = "Summarize the following conversation history in 2-3 sentences, preserving key facts, decisions, and context the assistant should remember."
 
@@ -87,7 +87,10 @@ class Agent:
         messages = await self._maybe_compress(messages)
 
         try:
-            snippets = await self._memory.search(user_message, limit=5)
+            if hasattr(self._memory, "search_records"):
+                snippets = await self._memory.search_records(user_message, limit=5)
+            else:
+                snippets = await self._memory.search(user_message, limit=5)
         except Exception as exc:
             yield f"RAG retrieval is unavailable: {exc}"
             self._memory.save_history(session_id, messages)
@@ -98,7 +101,10 @@ class Agent:
             self._memory.save_history(session_id, messages)
             return
 
-        context = "\n\n".join(f"[{i}] {snippet}" for i, snippet in enumerate(snippets, start=1))
+        context = "\n\n".join(
+            f"[{i}] {self._format_rag_snippet(snippet)}"
+            for i, snippet in enumerate(snippets, start=1)
+        )
         rag_messages = [
             {
                 "role": "user",
@@ -114,6 +120,26 @@ class Agent:
             save_to_session=(session_id, messages),
         ):
             yield chunk
+
+    @staticmethod
+    def _format_rag_snippet(snippet) -> str:
+        if isinstance(snippet, str):
+            return snippet
+        metadata = snippet.get("metadata", {}) if isinstance(snippet, dict) else {}
+        filename = metadata.get("filename") or metadata.get("source")
+        chunk_index = metadata.get("chunk_index")
+        page = metadata.get("page")
+
+        source_parts = []
+        if filename:
+            source_parts.append(f"source={filename}")
+        if chunk_index:
+            source_parts.append(f"chunk={chunk_index}")
+        if page:
+            source_parts.append(f"page={page}")
+
+        source = f" ({', '.join(source_parts)})" if source_parts else ""
+        return f"{snippet.get('content', '')}{source}"
 
     async def _maybe_compress(self, messages: list[dict]) -> list[dict]:
         """Summarize old messages when history exceeds max_history_tokens (est. chars/4)."""

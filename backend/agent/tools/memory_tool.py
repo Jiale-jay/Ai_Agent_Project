@@ -17,8 +17,9 @@ class MemoryStoreTool(BaseTool):
 
     async def run(self, content: str, tags: list[str] | None = None) -> ToolResult:
         try:
-            await self._memory.store(content, tags or [])
-            return ToolResult(success=True, output=f"Stored: {content[:80]}...")
+            memory_id = await self._memory.store(content, tags or [])
+            suffix = f" (id: {memory_id})" if memory_id else ""
+            return ToolResult(success=True, output=f"Stored{suffix}: {content[:80]}...")
         except Exception as e:
             return ToolResult(success=False, error=str(e))
 
@@ -53,10 +54,25 @@ class MemoryRecallTool(BaseTool):
             results = await self._memory.search(query, limit=limit)
             if not results:
                 return ToolResult(success=True, output="No relevant memories found.")
-            output = "\n\n".join(f"[{i+1}] {r}" for i, r in enumerate(results))
+            output = "\n\n".join(f"[{i+1}] {self._format_result(r)}" for i, r in enumerate(results))
             return ToolResult(success=True, output=output)
         except Exception as e:
             return ToolResult(success=False, error=str(e))
+
+    @staticmethod
+    def _format_result(result) -> str:
+        if isinstance(result, str):
+            return result
+        metadata = result.get("metadata", {})
+        filename = metadata.get("filename") or metadata.get("source")
+        chunk_index = metadata.get("chunk_index")
+        source = ""
+        if filename:
+            source = f" ({filename}"
+            if chunk_index:
+                source += f", chunk {chunk_index}"
+            source += ")"
+        return f"{result.get('content', '')}{source}"
 
     def to_claude_schema(self) -> dict:
         return {
