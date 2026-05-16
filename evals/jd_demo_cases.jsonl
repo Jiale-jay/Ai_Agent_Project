@@ -1,0 +1,4 @@
+{"id":"direct_basic","mode":"direct","input":"Summarize what a GenAI assistant can do for a finance team.","expected_behavior":"Answers directly without claiming to use internal knowledge."}
+{"id":"rag_policy","mode":"rag","input":"What approval is needed for expenses over EUR 1,000?","knowledge":"Expense claims over EUR 1,000 require manager approval and finance review.","expected_behavior":"Uses retrieved policy context and cites a knowledge snippet."}
+{"id":"agent_calculation","mode":"agent","input":"Calculate 37% of 43250 and explain the result.","expected_behavior":"Selects calculator or equivalent tool-assisted reasoning."}
+{"id":"automation_invoice","endpoint":"/automation/run","workflow_type":"invoice_exception","input":"Invoice has a bank detail mismatch and may contain personal data.","expected_behavior":"Returns structured JSON and sets requires_human_review=true."}

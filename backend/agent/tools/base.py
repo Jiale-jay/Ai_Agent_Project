@@ -4,7 +4,7 @@ from pydantic import BaseModel
 
 class ToolResult(BaseModel):
     success: bool
-    output: str
+    output: str = ""
     error: str = ""
 
 

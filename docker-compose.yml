@@ -5,6 +5,12 @@ services:
       - "6333:6333"
     volumes:
       - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333'"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
 
   backend:
     build: ./backend
@@ -14,7 +20,8 @@ services:
     environment:
       - QDRANT_URL=http://qdrant:6333
     depends_on:
-      - qdrant
+      qdrant:
+        condition: service_healthy
     volumes:
       - ./backend:/app
 

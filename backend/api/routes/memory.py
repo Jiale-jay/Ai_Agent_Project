@@ -13,19 +13,28 @@ def _get_memory():
 @router.get("/")
 async def list_memories():
     memory = _get_memory()
-    items = await memory.list_all()
-    return {"count": len(items), "items": items}
+    try:
+        items = await memory.list_all()
+        return {"count": len(items), "items": items}
+    except Exception as exc:
+        return {"count": 0, "items": [], "error": str(exc)}
 
 
 @router.post("/")
 async def store_memory(request: MemoryStoreRequest):
     memory = _get_memory()
-    await memory.store(request.content, request.tags)
-    return {"stored": True}
+    try:
+        await memory.store(request.content, request.tags, request.metadata)
+        return {"stored": True}
+    except Exception as exc:
+        return {"stored": False, "error": str(exc)}
 
 
 @router.get("/search")
 async def search_memory(q: str, limit: int = 5):
     memory = _get_memory()
-    results = await memory.search(q, limit=limit)
-    return {"query": q, "results": results}
+    try:
+        results = await memory.search(q, limit=limit)
+        return {"query": q, "results": results}
+    except Exception as exc:
+        return {"query": q, "results": [], "error": str(exc)}
