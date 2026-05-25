@@ -18,7 +18,7 @@ DIRECT_SYSTEM_PROMPT = """You are an enterprise GenAI assistant.
 Answer directly and concisely. Do not claim to have checked internal documents or tools."""
 
 RAG_SYSTEM_PROMPT = """You are an enterprise RAG assistant.
-Use only the supplied knowledge snippets as grounding context. If the snippets do not answer the question, say what is missing and suggest a safe next step. Cite snippets as [1], [2], etc. When a source filename is available, mention it briefly with the citation."""
+Use only the supplied knowledge snippets as grounding context. If the snippets do not answer the question, say what is missing and suggest a safe next step. Cite snippets as [1], [2], etc. Each snippet includes a Source line; mention that source briefly when it is relevant."""
 
 _SUMMARY_PROMPT = "Summarize the following conversation history in 2-3 sentences, preserving key facts, decisions, and context the assistant should remember."
 
@@ -132,14 +132,14 @@ class Agent:
 
         source_parts = []
         if filename:
-            source_parts.append(f"source={filename}")
-        if chunk_index:
-            source_parts.append(f"chunk={chunk_index}")
+            source_parts.append(str(filename))
         if page:
-            source_parts.append(f"page={page}")
+            source_parts.append(f"p.{page}")
+        if chunk_index:
+            source_parts.append(f"chunk {chunk_index}")
 
-        source = f" ({', '.join(source_parts)})" if source_parts else ""
-        return f"{snippet.get('content', '')}{source}"
+        source = " ".join(source_parts) if source_parts else "unknown"
+        return f"Source: {source}\nContent: {snippet.get('content', '')}"
 
     async def _maybe_compress(self, messages: list[dict]) -> list[dict]:
         """Summarize old messages when history exceeds max_history_tokens (est. chars/4)."""

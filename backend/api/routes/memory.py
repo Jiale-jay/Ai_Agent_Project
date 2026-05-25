@@ -1,6 +1,6 @@
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
-from agent.documents import build_document_chunks, decode_document
+from agent.documents import build_document_chunks, decode_document_pages
 from api.models import MemoryStoreRequest, MemoryUpdateRequest
 
 router = APIRouter()
@@ -66,8 +66,8 @@ async def upload_document(
         raise HTTPException(status_code=400, detail="Uploaded document is empty.")
 
     try:
-        text = decode_document(file.filename or "uploaded.txt", data)
-        chunks = build_document_chunks(file.filename or "uploaded.txt", text, raw_tags)
+        pages = decode_document_pages(file.filename or "uploaded.txt", data)
+        chunks = build_document_chunks(file.filename or "uploaded.txt", pages, raw_tags)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -91,10 +91,61 @@ async def upload_document(
     return {
         "stored": True,
         "filename": file.filename,
+        "document_id": chunks[0].metadata["document_id"],
         "chunks": len(chunks),
         "tags": raw_tags,
         "ids": memory_ids,
     }
+
+
+@router.get("/documents")
+async def list_documents(
+    user_id: str = "demo-user",
+    session_id: str | None = None,
+    limit: int = 200,
+):
+    memory = _get_memory()
+    try:
+        documents = await memory.list_documents(limit=limit, user_id=user_id, session_id=session_id)
+        return {"count": len(documents), "documents": documents}
+    except Exception as exc:
+        return {"count": 0, "documents": [], "error": str(exc)}
+
+
+@router.get("/documents/{document_id}")
+async def get_document(
+    document_id: str,
+    user_id: str = "demo-user",
+    session_id: str | None = None,
+):
+    memory = _get_memory()
+    try:
+        document = await memory.get_document(document_id, user_id=user_id, session_id=session_id)
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found.")
+        return {"document": document}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        return {"document": None, "error": str(exc)}
+
+
+@router.delete("/documents/{document_id}")
+async def delete_document(
+    document_id: str,
+    user_id: str = "demo-user",
+    session_id: str | None = None,
+):
+    memory = _get_memory()
+    try:
+        deleted_chunks = await memory.delete_document(document_id, user_id=user_id, session_id=session_id)
+        if deleted_chunks == 0:
+            raise HTTPException(status_code=404, detail="Document not found.")
+        return {"deleted": True, "document_id": document_id, "chunks": deleted_chunks}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        return {"deleted": False, "document_id": document_id, "error": str(exc)}
 
 
 @router.get("/search")

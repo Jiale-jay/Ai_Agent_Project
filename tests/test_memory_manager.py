@@ -181,3 +181,64 @@ async def test_delete_respects_user_and_session_scope(memory):
 
     assert await memory.delete(memory_id, user_id="u1", session_id="s1") is True
     assert memory_id not in memory._client.points
+
+
+@pytest.mark.asyncio
+async def test_document_management_groups_details_and_deletes_chunks(memory):
+    first_id = await memory.store(
+        "First chunk",
+        ["policy"],
+        {
+            "source": "document_upload",
+            "document_id": "doc-1",
+            "filename": "policy.pdf",
+            "chunk_index": 2,
+            "page": 2,
+            "uploaded_at": "2026-05-01T00:00:00",
+            "tags": ["policy"],
+        },
+        user_id="u1",
+        session_id="s1",
+    )
+    second_id = await memory.store(
+        "Second chunk",
+        ["policy"],
+        {
+            "source": "document_upload",
+            "document_id": "doc-1",
+            "filename": "policy.pdf",
+            "chunk_index": 1,
+            "page": 1,
+            "uploaded_at": "2026-05-01T00:00:00",
+            "tags": ["policy"],
+        },
+        user_id="u1",
+        session_id="s1",
+    )
+    await memory.store(
+        "Manual memory",
+        ["policy"],
+        {"source": "manual"},
+        user_id="u1",
+        session_id="s1",
+    )
+
+    documents = await memory.list_documents(user_id="u1", session_id="s1")
+    detail = await memory.get_document("doc-1", user_id="u1", session_id="s1")
+    deleted = await memory.delete_document("doc-1", user_id="u1", session_id="s1")
+
+    assert documents == [
+        {
+            "document_id": "doc-1",
+            "filename": "policy.pdf",
+            "tags": ["policy"],
+            "uploaded_at": "2026-05-01T00:00:00",
+            "chunk_count": 2,
+            "user_id": "u1",
+            "session_id": "s1",
+        }
+    ]
+    assert [chunk["id"] for chunk in detail["chunks"]] == [second_id, first_id]
+    assert deleted == 2
+    assert first_id not in memory._client.points
+    assert second_id not in memory._client.points

@@ -285,6 +285,96 @@ class MemoryManager:
             raise RuntimeError(f"Qdrant scroll failed: {exc}") from exc
         return [self._point_to_record(p) for p in result if p.payload]
 
+    async def list_documents(
+        self,
+        limit: int = 200,
+        user_id: str = _DEFAULT_USER_ID,
+        session_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        records = await self.list_all(
+            limit=limit,
+            user_id=user_id,
+            session_id=session_id,
+            metadata_key="source",
+            metadata_value="document_upload",
+        )
+        documents: dict[str, dict[str, Any]] = {}
+        for record in records:
+            metadata = record.get("metadata", {})
+            document_id = metadata.get("document_id")
+            if not document_id:
+                continue
+
+            document = documents.setdefault(
+                document_id,
+                {
+                    "document_id": document_id,
+                    "filename": metadata.get("filename", "unknown"),
+                    "tags": metadata.get("tags") or record.get("tags", []),
+                    "uploaded_at": metadata.get("uploaded_at"),
+                    "chunk_count": 0,
+                    "user_id": record.get("user_id"),
+                    "session_id": record.get("session_id"),
+                },
+            )
+            document["chunk_count"] += 1
+            uploaded_at = metadata.get("uploaded_at")
+            if uploaded_at and (not document["uploaded_at"] or uploaded_at < document["uploaded_at"]):
+                document["uploaded_at"] = uploaded_at
+
+        return sorted(
+            documents.values(),
+            key=lambda item: item.get("uploaded_at") or "",
+            reverse=True,
+        )
+
+    async def get_document(
+        self,
+        document_id: str,
+        user_id: str = _DEFAULT_USER_ID,
+        session_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        chunks = await self.list_all(
+            limit=1000,
+            user_id=user_id,
+            session_id=session_id,
+            metadata_key="document_id",
+            metadata_value=document_id,
+        )
+        if not chunks:
+            return None
+
+        chunks.sort(key=lambda item: item.get("metadata", {}).get("chunk_index") or 0)
+        first_metadata = chunks[0].get("metadata", {})
+        return {
+            "document_id": document_id,
+            "filename": first_metadata.get("filename", "unknown"),
+            "tags": first_metadata.get("tags") or chunks[0].get("tags", []),
+            "uploaded_at": first_metadata.get("uploaded_at"),
+            "chunk_count": len(chunks),
+            "chunks": chunks,
+        }
+
+    async def delete_document(
+        self,
+        document_id: str,
+        user_id: str = _DEFAULT_USER_ID,
+        session_id: str | None = None,
+    ) -> int:
+        document = await self.get_document(document_id, user_id=user_id, session_id=session_id)
+        if not document:
+            return 0
+
+        point_ids = [chunk["id"] for chunk in document["chunks"]]
+        try:
+            await self._client.delete(
+                collection_name=settings.qdrant_collection,
+                points_selector=PointIdsList(points=point_ids),
+            )
+        except Exception as exc:
+            raise RuntimeError(f"Qdrant document delete failed: {exc}") from exc
+        return len(point_ids)
+
     @classmethod
     def _utc_now(cls) -> str:
         return datetime.utcnow().isoformat()

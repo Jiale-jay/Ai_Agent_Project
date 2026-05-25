@@ -68,7 +68,7 @@ async def test_rag_mode_requires_knowledge_when_search_empty():
 async def test_rag_mode_uses_retrieved_knowledge():
     memory = FakeMemory(search_results=[{
         "content": "Expense claims over EUR 1,000 require review.",
-        "metadata": {"filename": "expense-policy.md", "chunk_index": 2},
+        "metadata": {"filename": "expense-policy.md", "page": 4, "chunk_index": 2},
         "score": 0.88,
     }])
     agent = make_agent(memory)
@@ -78,7 +78,7 @@ async def test_rag_mode_uses_retrieved_knowledge():
     assert chunks == ["grounded answer"]
     assert memory.saved["s1"][-1]["content"] == "grounded answer"
     assert "expense-policy.md" in agent.last_stream_messages[0]["content"]
-    assert "chunk=2" in agent.last_stream_messages[0]["content"]
+    assert "Source: expense-policy.md p.4 chunk 2" in agent.last_stream_messages[0]["content"]
 
 
 @pytest.mark.asyncio

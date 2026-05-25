@@ -88,6 +88,10 @@ def _api_post(path: str, **kwargs):
     return requests.post(f"{BACKEND_URL}{path}", timeout=120, **kwargs)
 
 
+def _api_delete(path: str, **kwargs):
+    return requests.delete(f"{BACKEND_URL}{path}", timeout=30, **kwargs)
+
+
 def _render_content(content: str):
     parts = re.split(r"(```tool\n.*?```)", content, flags=re.DOTALL)
     for part in parts:
@@ -140,7 +144,7 @@ with st.sidebar:
 
     st.divider()
     st.header("Knowledge Base")
-    uploaded_doc = st.file_uploader("Upload enterprise document", type=["txt", "md"])
+    uploaded_doc = st.file_uploader("Upload enterprise document", type=["txt", "md", "pdf"])
     upload_tags = st.text_input("Upload tags", value="policy,enterprise")
     if uploaded_doc and st.button("Upload Document"):
         try:
@@ -151,17 +155,81 @@ with st.sidebar:
                     uploaded_doc.type or "text/plain",
                 )
             }
-            r = _api_post("/memory/upload", files=files, data={"tags": upload_tags})
+            r = _api_post(
+                "/memory/upload",
+                files=files,
+                data={"tags": upload_tags, "session_id": session_id},
+            )
             if r.ok:
                 result = r.json()
                 if result.get("stored"):
-                    st.success(f"Stored {result['chunks']} chunks from {result['filename']}")
+                    st.success(
+                        f"Stored {result['chunks']} chunks from {result['filename']} "
+                        f"({result.get('document_id', 'document')})"
+                    )
                 else:
                     st.error(result.get("error", "Upload failed"))
             else:
                 st.error(r.json().get("detail", f"Upload failed: {r.status_code}"))
         except Exception as exc:
             st.error(f"Upload failed: {exc}")
+
+    st.subheader("Documents")
+    document_filter = st.text_input("Filter documents", value="")
+    try:
+        r = _api_get("/memory/documents", params={"session_id": session_id})
+        if r.ok:
+            data = r.json()
+            if data.get("error"):
+                st.warning(data["error"])
+            documents = data.get("documents", [])
+            if document_filter:
+                needle = document_filter.lower()
+                documents = [
+                    doc for doc in documents
+                    if needle in doc.get("filename", "").lower()
+                    or any(needle in tag.lower() for tag in doc.get("tags", []))
+                ]
+
+            if not documents:
+                st.caption("No uploaded documents yet.")
+
+            for doc in documents:
+                label = f"{doc.get('filename', 'document')} · {doc.get('chunk_count', 0)} chunks"
+                with st.expander(label, expanded=False):
+                    st.caption(doc.get("document_id", ""))
+                    if doc.get("tags"):
+                        st.write(", ".join(doc["tags"]))
+                    if doc.get("uploaded_at"):
+                        st.write(f"Uploaded: {doc['uploaded_at']}")
+
+                    detail = _api_get(
+                        f"/memory/documents/{doc['document_id']}",
+                        params={"session_id": session_id},
+                    )
+                    if detail.ok:
+                        chunks = detail.json().get("document", {}).get("chunks", [])
+                        for chunk in chunks[:3]:
+                            metadata = chunk.get("metadata", {})
+                            source = f"chunk {metadata.get('chunk_index')}"
+                            if metadata.get("page"):
+                                source = f"p.{metadata['page']} · {source}"
+                            st.caption(source)
+                            st.write(chunk.get("content", "")[:500])
+                    if st.button("Delete document", key=f"delete-doc-{doc['document_id']}"):
+                        deleted = _api_delete(
+                            f"/memory/documents/{doc['document_id']}",
+                            params={"session_id": session_id},
+                        )
+                        if deleted.ok and deleted.json().get("deleted"):
+                            st.success("Document deleted")
+                            st.rerun()
+                        else:
+                            st.error("Delete failed")
+        else:
+            st.warning(f"Could not load documents: {r.status_code}")
+    except Exception as exc:
+        st.warning(f"Could not load documents: {exc}")
 
     with st.form("knowledge_form"):
         knowledge = st.text_area(
@@ -187,15 +255,15 @@ with st.sidebar:
             data = r.json()
             if data.get("error"):
                 st.warning(data["error"])
-            for result in data.get("results", []):
-                if isinstance(result, str):
-                    st.info(result)
-                    continue
+            for result in data.get("items", []):
                 metadata = result.get("metadata", {})
                 filename = metadata.get("filename") or metadata.get("source", "manual")
                 chunk_index = metadata.get("chunk_index")
+                page = metadata.get("page")
                 score = result.get("score")
                 label = filename
+                if page:
+                    label += f" · p.{page}"
                 if chunk_index:
                     label += f" · chunk {chunk_index}"
                 if score is not None:
